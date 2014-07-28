@@ -1,0 +1,10 @@
+{
+    entry = {
+	bundle = PortraitLock;
+	cell = PSLinkCell;
+	detail = PortraitLockListController;
+	icon = PortraitLock.png;
+	isController = 1;
+	label = PortraitLock;
+    };
+}
