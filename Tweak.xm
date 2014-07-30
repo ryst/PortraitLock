@@ -9,8 +9,12 @@
 -(bool)isLocked;
 @end
 
+@interface BKSApplicationLaunchSettings
+@property(nonatomic) int interfaceOrientation;
+@end
+
 static bool enabled = NO;
-static NSMutableArray* appsToLock = nil;
+static NSMutableDictionary* appsToLock = nil;
 
 static NSString* lockIdentifier = @"";
 static long long savedOrientation = 0;
@@ -21,18 +25,38 @@ static void loadPreferences() {
 
 	[appsToLock removeAllObjects];
 
-	id object = [settings objectForKey:@"enabled"];
-	enabled = (object != nil) ? [object boolValue] : YES;
+	NSNumber* value = [settings valueForKey:@"enabled"];
+	if (value != nil) {
+		enabled = [value boolValue];
+	} else {
+		enabled = YES;
+	}
 
 	if (!enabled) {
 		return;
 	}
 
+	NSRange prefix;
+	NSString* identifier;
+
+	NSDictionary* types = [NSDictionary dictionaryWithObjectsAndKeys:
+		[NSNumber numberWithInt:1], @"lock-",
+		[NSNumber numberWithInt:3], @"lock3-",
+		[NSNumber numberWithInt:4], @"lock4-",
+		[NSNumber numberWithInt:0], @"lock0-",
+		nil];
+
 	for (NSString* key in [settings allKeys]) {
 		if ([[settings valueForKey:key] boolValue]) {
-			NSRange prefix = [key rangeOfString:@"lock-"];
-			if (prefix.location == 0) { // key starts with desired prefix
-				[appsToLock addObject:[key stringByReplacingCharactersInRange:prefix withString:@""]];
+			for (NSString* type in [types allKeys]) {
+				prefix = [key rangeOfString:type];
+				if (prefix.location == 0) { // key starts with desired prefix
+					identifier = [key stringByReplacingCharactersInRange:prefix withString:@""];
+					if ([appsToLock valueForKey:identifier] == nil) {
+						[appsToLock setValue:[types valueForKey:type] forKey:identifier];
+					}
+					continue;
+				}
 			}
 		}
 	}
@@ -51,7 +75,9 @@ static void receivedNotification(CFNotificationCenterRef center, void *observer,
 -(void)willActivate {
 	if (enabled) {
 		NSString* identifier = [self bundleIdentifier];
-		if ([appsToLock containsObject:identifier]) {
+		NSNumber* value = [appsToLock valueForKey:identifier];
+
+		if (value != nil) {
 			SBOrientationLockManager* manager = [%c(SBOrientationLockManager) sharedInstance];
 
 			if ([lockIdentifier length] == 0) {
@@ -59,13 +85,47 @@ static void receivedNotification(CFNotificationCenterRef center, void *observer,
 				savedOrientation = [manager isLocked] ? [manager userLockOrientation] : 0;
 			}
 
-			// Lock orientation to portrait
-			[manager lock:UIInterfaceOrientationPortrait];
+			// Lock or unlock orientation
+			if ([value intValue] == 0) {
+				[manager unlock];
+			} else {
+				[manager lock:[value intValue]];
+			}
 
 			lockIdentifier = identifier;
 		}
 	}
 	%orig;
+}
+
+- (id)activationSettings {
+	id r = %orig;
+
+	if (enabled && ![self isRunning]) {
+		NSString* identifier = [self bundleIdentifier];
+		NSNumber* value = [appsToLock valueForKey:identifier];
+
+		if (value != nil) {
+			SBOrientationLockManager* manager = [%c(SBOrientationLockManager) sharedInstance];
+
+			if ([lockIdentifier length] == 0) {
+				// remember the old lock orientation so we can restore it later
+				savedOrientation = [manager isLocked] ? [manager userLockOrientation] : 0;
+			}
+
+			// Lock or unlock orientation
+			if ([value intValue] == 0) {
+				[manager unlock];
+			} else {
+				BKSApplicationLaunchSettings* settings = (BKSApplicationLaunchSettings*)r;
+				[settings setInterfaceOrientation:[value intValue]];
+			}
+
+			lockIdentifier = identifier;
+		}
+	}
+
+	return r;
 }
 
 -(void)didSuspend {
@@ -95,7 +155,7 @@ static void receivedNotification(CFNotificationCenterRef center, void *observer,
 		NULL,
 		CFNotificationSuspensionBehaviorCoalesce);
 
-	appsToLock = [NSMutableArray arrayWithCapacity:10];
+	appsToLock = [NSMutableDictionary dictionaryWithCapacity:10];
 
 	loadPreferences();
 }
