@@ -9,6 +9,12 @@
 -(bool)isLocked;
 @end
 
+@interface SBApplication
+-(id)bundleIdentifier;
+-(bool)isRunning;
+-(void)PL_restoreSavedOrientation;
+@end
+
 @interface BKSApplicationLaunchSettings
 @property(nonatomic) int interfaceOrientation;
 @end
@@ -129,6 +135,17 @@ static void receivedNotification(CFNotificationCenterRef center, void *observer,
 }
 
 -(void)didSuspend {
+	[self PL_restoreSavedOrientation];
+	%orig;
+}
+
+-(void)didDeactivateForEventsOnly:(bool)arg1 {
+	[self PL_restoreSavedOrientation];
+	%orig;
+}
+
+%new
+-(void)PL_restoreSavedOrientation {
 	NSString* identifier = [self bundleIdentifier];
 	if (enabled && [lockIdentifier isEqualToString:identifier]) {
 
@@ -142,7 +159,6 @@ static void receivedNotification(CFNotificationCenterRef center, void *observer,
 			[manager unlock];
 		}
 	}
-	%orig;
 }
 %end
 
