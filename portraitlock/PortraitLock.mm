@@ -7,7 +7,11 @@
 @implementation PortraitLockListController
 -(id)specifiers {
 	if (_specifiers == nil) {
-		_specifiers = [[self loadSpecifiersFromPlistName:@"PortraitLock" target:self] retain];
+		if ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad) {
+			_specifiers = [[self loadSpecifiersFromPlistName:@"PortraitLock-iPad" target:self] retain];
+		} else {
+			_specifiers = [[self loadSpecifiersFromPlistName:@"PortraitLock" target:self] retain];
+		}
 	}
 	return _specifiers;
 }
@@ -34,10 +38,15 @@
 		NSString* plist = @"/var/mobile/Library/Preferences/com.ryst.portraitlock.plist";
 		NSDictionary* settings = [NSDictionary dictionaryWithContentsOfFile:plist];
 
-		NSNumber* value = [settings valueForKey:@"enabled"];
+		NSNumber* enabled = [settings valueForKey:@"enabled"];
+		NSNumber* springboard = [settings valueForKey:@"springboard-lock"];
 
-		if (value != nil) {
-			settings = [NSDictionary dictionaryWithObject:value forKey:@"enabled"];
+		if (enabled != nil && springboard != nil) {
+			settings = [NSDictionary dictionaryWithObjectsAndKeys:enabled, @"enabled", springboard, @"springboard-lock", nil];
+		} else if (enabled != nil) {
+			settings = [NSDictionary dictionaryWithObject:enabled forKey:@"enabled"];
+		} else if (springboard != nil) {
+			settings = [NSDictionary dictionaryWithObject:springboard forKey:@"springboard-lock"];
 		} else {
 			settings = [NSDictionary dictionary];
 		}
