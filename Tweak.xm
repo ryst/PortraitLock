@@ -25,6 +25,9 @@ static NSMutableDictionary* appsToLock = nil;
 static NSString* lockIdentifier = @"";
 static long long savedOrientation = 0;
 
+static int springboardLockActive = 0;
+static int springboardLockSetting = 0;
+
 static void loadPreferences() {
 	NSString* plist = @"/var/mobile/Library/Preferences/com.ryst.portraitlock.plist";
 	NSDictionary* settings = [NSDictionary dictionaryWithContentsOfFile:plist];
@@ -69,6 +72,12 @@ static void loadPreferences() {
 
 	if ([appsToLock count] == 0) {
 		enabled = NO;
+	}
+
+	// Get springboard orientation lock setting
+	value = [settings valueForKey:@"springboard-lock"];
+	if (value != nil) {
+		springboardLockSetting = [value intValue];
 	}
 }
 
@@ -162,6 +171,24 @@ static void receivedNotification(CFNotificationCenterRef center, void *observer,
 }
 %end
 
+%hook SpringBoard
+-(long long)interfaceOrientationForCurrentDeviceOrientation {
+	return springboardLockActive ?: %orig;
+}
+
+- (void)setWantsOrientationEvents:(bool)wants {
+	if (!wants) {
+		%orig;
+
+		springboardLockActive = springboardLockSetting;
+	} else if (springboardLockActive == 0) {
+		%orig;
+	} else {
+		%orig(NO);
+	}
+}
+%end
+
 %ctor {
 	CFNotificationCenterAddObserver(
 		CFNotificationCenterGetDarwinNotifyCenter(),
@@ -174,5 +201,7 @@ static void receivedNotification(CFNotificationCenterRef center, void *observer,
 	appsToLock = [NSMutableDictionary dictionaryWithCapacity:10];
 
 	loadPreferences();
+
+	springboardLockActive = springboardLockSetting;
 }
 
