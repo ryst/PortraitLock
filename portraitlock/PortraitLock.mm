@@ -7,11 +7,7 @@
 @implementation PortraitLockListController
 -(id)specifiers {
 	if (_specifiers == nil) {
-		if ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad) {
-			_specifiers = [[self loadSpecifiersFromPlistName:@"PortraitLock-iPad" target:self] retain];
-		} else {
-			_specifiers = [[self loadSpecifiersFromPlistName:@"PortraitLock" target:self] retain];
-		}
+		_specifiers = [[self loadSpecifiersFromPlistName:@"PortraitLock" target:self] retain];
 	}
 	return _specifiers;
 }
