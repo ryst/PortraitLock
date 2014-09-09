@@ -240,6 +240,55 @@ Landscape right = home button on left edge</string>
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>SpringBoard orientation</string>
+			<key>footerText</key>
+			<string>Lock SpringBoard orientation. Device must be put to sleep before setting takes effect.</string>
+			<key>requiredCapabilities</key>
+			<array>
+				<string>ipad</string>
+			</array>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkListCell</string>
+			<key>default</key>
+			<integer>0</integer>
+			<key>defaults</key>
+			<string>com.ryst.portraitlock</string>
+			<key>detail</key>
+			<string>PSListItemsController</string>
+			<key>key</key>
+			<string>springboard-lock</string>
+			<key>label</key>
+			<string>Orientation</string>
+			<key>validTitles</key>
+			<array>
+				<string>Unlocked</string>
+				<string>Portrait</string>
+				<string>Portrait upside down</string>
+				<string>Landscape left</string>
+				<string>Landscape right</string>
+			</array>
+			<key>validValues</key>
+			<array>
+				<integer>0</integer>
+				<integer>1</integer>
+				<integer>2</integer>
+				<integer>3</integer>
+				<integer>4</integer>
+			</array>
+			<key>requiredCapabilities</key>
+			<array>
+				<string>ipad</string>
+			</array>
+			<key>PostNotification</key>
+			<string>com.ryst.portraitlock/settingschanged</string>
+		</dict>
+
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
 			<key>footerText</key>
 			<string>If you like this tweak, please consider making a donation. Thanks!</string>
 		</dict>
