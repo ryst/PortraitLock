@@ -37,8 +37,6 @@ static void loadPreferences() {
 	NSNumber* value = [settings valueForKey:@"enabled"];
 	if (value != nil) {
 		enabled = [value boolValue];
-	} else {
-		enabled = YES;
 	}
 
 	if (!enabled) {
@@ -68,10 +66,6 @@ static void loadPreferences() {
 				}
 			}
 		}
-	}
-
-	if ([appsToLock count] == 0) {
-		enabled = NO;
 	}
 
 	// Get springboard orientation lock setting
@@ -173,7 +167,11 @@ static void receivedNotification(CFNotificationCenterRef center, void *observer,
 
 %hook SpringBoard
 -(long long)interfaceOrientationForCurrentDeviceOrientation {
-	return springboardLockActive ?: %orig;
+	if (enabled && springboardLockActive) {
+		return springboardLockActive;
+	} else {
+		return %orig;
+	}
 }
 
 - (void)setWantsOrientationEvents:(bool)wants {
@@ -181,7 +179,7 @@ static void receivedNotification(CFNotificationCenterRef center, void *observer,
 		%orig;
 
 		springboardLockActive = springboardLockSetting;
-	} else if (springboardLockActive == 0) {
+	} else if (!enabled || springboardLockActive == 0) {
 		%orig;
 	} else {
 		%orig(NO);
