@@ -19,7 +19,18 @@
 @property(nonatomic) int interfaceOrientation;
 @end
 
+@interface SpringBoard : UIApplication;
+-(id)_accessibilityFrontMostApplication;
+@end
+
+@interface MPInlineVideoController
+@property(nonatomic, getter=isFullscreen) BOOL fullscreen;
+@end
+
+%group SpringBoardHooks
+
 static bool enabled = NO;
+static bool enabledVideo = NO;
 static NSMutableDictionary* appsToLock = nil;
 
 static NSString* lockIdentifier = @"";
@@ -75,9 +86,39 @@ static void loadPreferences() {
 	}
 }
 
+static void setFullScreenVideo(bool isFullScreen) {
+	SpringBoard* springBoard = (SpringBoard*)[%c(SpringBoard) sharedApplication];
+	SBApplication* frontMostApp = [springBoard _accessibilityFrontMostApplication];
+	NSString* identifier = [frontMostApp bundleIdentifier];
+
+	if (enabled && enabledVideo && [lockIdentifier isEqualToString:identifier]) {
+
+		SBOrientationLockManager* manager = [%c(SBOrientationLockManager) sharedInstance];
+		if (isFullScreen) {
+			// Unlock
+			[manager unlock];
+		} else {
+			// Re-lock
+			NSNumber* value = [appsToLock valueForKey:identifier];
+
+			if ([value intValue] != 0) {
+				[manager lock:[value intValue]];
+			}
+		}
+	}
+}
+
 static void receivedNotification(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo)
 {
-	loadPreferences();
+	NSString* notificationName = (NSString*)name;
+
+	if ([notificationName isEqualToString:@"com.ryst.portraitlock/settingschanged"]) {
+		loadPreferences();
+	} else if ([notificationName isEqualToString:@"com.ryst.portraitlock/tofullscreenvideo"]) {
+		setFullScreenVideo(YES);
+	} else if ([notificationName isEqualToString:@"com.ryst.portraitlock/fromfullscreenvideo"]) {
+		setFullScreenVideo(NO);
+	} 
 }
 
 %hook SBApplication
@@ -187,19 +228,85 @@ static void receivedNotification(CFNotificationCenterRef center, void *observer,
 }
 %end
 
-%ctor {
-	CFNotificationCenterAddObserver(
+%end // group SpringBoardHooks
+
+%hook MPInlineVideoController
+- (void)displayVideoView {
+	%orig;
+
+	if ([self isFullscreen]) {
+		// Post notification of change
+		CFNotificationCenterPostNotification(
+			CFNotificationCenterGetDarwinNotifyCenter(),
+			CFSTR("com.ryst.portraitlock/tofullscreenvideo"),
+			NULL, // object
+			NULL, // userInfo,
+			false);
+	}
+}
+
+-(void)_transitionToFullscreenDidEnd {
+	// Post notification of change
+	CFNotificationCenterPostNotification(
 		CFNotificationCenterGetDarwinNotifyCenter(),
-		NULL,
-		receivedNotification,
-		CFSTR("com.ryst.portraitlock/settingschanged"),
-		NULL,
-		CFNotificationSuspensionBehaviorCoalesce);
+		CFSTR("com.ryst.portraitlock/tofullscreenvideo"),
+		NULL, // object
+		NULL, // userInfo,
+		false);
 
-	appsToLock = [NSMutableDictionary dictionaryWithCapacity:10];
+	%orig;
+}
 
-	loadPreferences();
+-(void)_transitionFromFullscreenDidEnd {
+	%orig;
 
-	springboardLockActive = springboardLockSetting;
+	// Post notification of change
+	CFNotificationCenterPostNotification(
+		CFNotificationCenterGetDarwinNotifyCenter(),
+		CFSTR("com.ryst.portraitlock/fromfullscreenvideo"),
+		NULL, // object
+		NULL, // userInfo,
+		false);
+}
+%end
+
+%ctor {
+	// Load hooks for SpringBoard
+	if (%c(SpringBoard)) {
+		%init(SpringBoardHooks);
+
+		CFNotificationCenterAddObserver(
+			CFNotificationCenterGetDarwinNotifyCenter(),
+			NULL,
+			receivedNotification,
+			CFSTR("com.ryst.portraitlock/settingschanged"),
+			NULL,
+			CFNotificationSuspensionBehaviorCoalesce);
+
+		CFNotificationCenterAddObserver(
+			CFNotificationCenterGetDarwinNotifyCenter(),
+			NULL,
+			receivedNotification,
+			CFSTR("com.ryst.portraitlock/tofullscreenvideo"),
+			NULL,
+			CFNotificationSuspensionBehaviorCoalesce);
+
+		CFNotificationCenterAddObserver(
+			CFNotificationCenterGetDarwinNotifyCenter(),
+			NULL,
+			receivedNotification,
+			CFSTR("com.ryst.portraitlock/fromfullscreenvideo"),
+			NULL,
+			CFNotificationSuspensionBehaviorCoalesce);
+
+		appsToLock = [NSMutableDictionary dictionaryWithCapacity:10];
+
+		loadPreferences();
+
+		springboardLockActive = springboardLockSetting;
+	}
+
+	// Load hooks for other apps
+	%init;
 }
 

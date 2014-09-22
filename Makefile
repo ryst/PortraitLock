@@ -2,6 +2,7 @@ include theos/makefiles/common.mk
 
 TWEAK_NAME = PortraitLock
 PortraitLock_FILES = Tweak.xm
+PortraitLock_FRAMEWORKS = MediaPlayer
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
