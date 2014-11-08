@@ -4,6 +4,10 @@ Turn on/off rotation lock automatically when specified apps are opened.
 
 Changelog
 =========
+v0.1.2-3
+- added support for iOS 8
+- removed unlocking when going to fullscreen video because there are too many video players to support
+
 v0.1.2-2
 - added flipswitch
 - added support for unlocking when going to fullscreen video
