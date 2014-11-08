@@ -1,5 +1,24 @@
 #include <UIKit/UIKit.h>
 
+#ifndef kCFCoreFoundationVersionNumber_iOS_7_0
+#define kCFCoreFoundationVersionNumber_iOS_7_0 847.20
+#endif
+
+#ifndef kCFCoreFoundationVersionNumber_iOS_8_0
+#define kCFCoreFoundationVersionNumber_iOS_8_0 1140.10
+#endif
+
+#ifndef kCFCoreFoundationVersionNumber_iOS_8_1
+#define kCFCoreFoundationVersionNumber_iOS_8_1 1141.14
+#endif
+
+#define isiOS7 kCFCoreFoundationVersionNumber >= 847.20
+#define isiOS8 kCFCoreFoundationVersionNumber >= 1140.10
+
+@interface SpringBoard
+-(void)_relaunchSpringBoardNow;
+@end
+
 @interface SBOrientationLockManager
 +(id)sharedInstance;
 -(void)unlock;
@@ -19,18 +38,7 @@
 @property(nonatomic) int interfaceOrientation;
 @end
 
-@interface SpringBoard : UIApplication;
--(id)_accessibilityFrontMostApplication;
-@end
-
-@interface MPInlineVideoController
-@property(nonatomic, getter=isFullscreen) BOOL fullscreen;
-@end
-
-%group SpringBoardHooks
-
 static bool enabled = NO;
-static bool enabledVideo = NO;
 static NSMutableDictionary* appsToLock = nil;
 
 static NSString* lockIdentifier = @"";
@@ -80,32 +88,25 @@ static void loadPreferences() {
 	}
 
 	// Get springboard orientation lock setting
-	value = [settings valueForKey:@"springboard-lock"];
-	if (value != nil) {
-		springboardLockSetting = [value intValue];
-	}
-}
-
-static void setFullScreenVideo(bool isFullScreen) {
-	SpringBoard* springBoard = (SpringBoard*)[%c(SpringBoard) sharedApplication];
-	SBApplication* frontMostApp = [springBoard _accessibilityFrontMostApplication];
-	NSString* identifier = [frontMostApp bundleIdentifier];
-
-	if (enabled && enabledVideo && [lockIdentifier isEqualToString:identifier]) {
-
-		SBOrientationLockManager* manager = [%c(SBOrientationLockManager) sharedInstance];
-		if (isFullScreen) {
-			// Unlock
-			[manager unlock];
+	int lockSetting = 0;
+	if (isiOS8) {
+		value = [settings valueForKey:@"springboard-lock-ios8"];
+		if (value != nil) {
+			lockSetting = [value boolValue] ? 1 : 0;
 		} else {
-			// Re-lock
-			NSNumber* value = [appsToLock valueForKey:identifier];
-
-			if ([value intValue] != 0) {
-				[manager lock:[value intValue]];
+			value = [settings valueForKey:@"springboard-lock"];
+			if (value != nil) {
+				lockSetting = [value intValue];
 			}
 		}
+	} else {
+		value = [settings valueForKey:@"springboard-lock"];
+		if (value != nil) {
+			lockSetting = [value intValue];
+		}
 	}
+
+	springboardLockSetting = lockSetting;
 }
 
 static void receivedNotification(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo)
@@ -114,41 +115,14 @@ static void receivedNotification(CFNotificationCenterRef center, void *observer,
 
 	if ([notificationName isEqualToString:@"com.ryst.portraitlock/settingschanged"]) {
 		loadPreferences();
-	} else if ([notificationName isEqualToString:@"com.ryst.portraitlock/tofullscreenvideo"]) {
-		setFullScreenVideo(YES);
-	} else if ([notificationName isEqualToString:@"com.ryst.portraitlock/fromfullscreenvideo"]) {
-		setFullScreenVideo(NO);
+	} else if ([notificationName isEqualToString:@"com.ryst.portraitlock/respring"]) {
+		[(SpringBoard*)[UIApplication sharedApplication] _relaunchSpringBoardNow];
 	} 
 }
 
 %hook SBApplication
--(void)willActivate {
-	if (enabled) {
-		NSString* identifier = [self bundleIdentifier];
-		NSNumber* value = [appsToLock valueForKey:identifier];
-
-		if (value != nil) {
-			SBOrientationLockManager* manager = [%c(SBOrientationLockManager) sharedInstance];
-
-			if ([lockIdentifier length] == 0) {
-				// remember the old lock orientation so we can restore it later
-				savedOrientation = [manager isLocked] ? [manager userLockOrientation] : 0;
-			}
-
-			// Lock or unlock orientation
-			if ([value intValue] == 0) {
-				[manager unlock];
-			} else {
-				[manager lock:[value intValue]];
-			}
-
-			lockIdentifier = identifier;
-		}
-	}
-	%orig;
-}
-
-- (id)activationSettings {
+%group HookSBApplication7
+-(id)activationSettings {
 	id r = %orig;
 
 	if (enabled && ![self isRunning]) {
@@ -177,9 +151,48 @@ static void receivedNotification(CFNotificationCenterRef center, void *observer,
 
 	return r;
 }
+%end // group HookSBApplication7
 
--(void)didSuspend {
-	[self PL_restoreSavedOrientation];
+%group HookSBApplication8
+-(long long)launchingInterfaceOrientationForCurrentOrientation {
+	if (enabled) {
+		NSString* identifier = [self bundleIdentifier];
+		NSNumber* value = [appsToLock valueForKey:identifier];
+
+		if (value != nil) {
+			if ([value intValue] != 0) {
+				return [value longLongValue];
+			}
+		}
+	}
+
+	return %orig;
+}
+%end // group HookSBApplication8
+
+-(void)willActivate {
+	if (enabled) {
+		NSString* identifier = [self bundleIdentifier];
+		NSNumber* value = [appsToLock valueForKey:identifier];
+
+		if (value != nil) {
+			SBOrientationLockManager* manager = [%c(SBOrientationLockManager) sharedInstance];
+
+			if ([lockIdentifier length] == 0) {
+				// remember the old lock orientation so we can restore it later
+				savedOrientation = [manager isLocked] ? [manager userLockOrientation] : 0;
+			}
+
+			// Lock or unlock orientation
+			if ([value intValue] == 0) {
+				[manager unlock];
+			} else {
+				[manager lock:[value intValue]];
+			}
+
+			lockIdentifier = identifier;
+		}
+	}
 	%orig;
 }
 
@@ -204,9 +217,10 @@ static void receivedNotification(CFNotificationCenterRef center, void *observer,
 		}
 	}
 }
-%end
+%end // hook SBApplication
 
 %hook SpringBoard
+%group HookSpringBoard7
 -(long long)interfaceOrientationForCurrentDeviceOrientation {
 	if (enabled && springboardLockActive) {
 		return springboardLockActive;
@@ -226,87 +240,50 @@ static void receivedNotification(CFNotificationCenterRef center, void *observer,
 		%orig(NO);
 	}
 }
-%end
+%end // group HookSpringBoard7
 
-%end // group SpringBoardHooks
-
-%hook MPInlineVideoController
-- (void)displayVideoView {
-	%orig;
-
-	if ([self isFullscreen]) {
-		// Post notification of change
-		CFNotificationCenterPostNotification(
-			CFNotificationCenterGetDarwinNotifyCenter(),
-			CFSTR("com.ryst.portraitlock/tofullscreenvideo"),
-			NULL, // object
-			NULL, // userInfo,
-			false);
+%group HookSpringBoard8
+-(long long)homeScreenRotationStyle {
+	if (springboardLockActive != 0) {
+		return 0;
+	} else {
+		return %orig;
 	}
 }
-
--(void)_transitionToFullscreenDidEnd {
-	// Post notification of change
-	CFNotificationCenterPostNotification(
-		CFNotificationCenterGetDarwinNotifyCenter(),
-		CFSTR("com.ryst.portraitlock/tofullscreenvideo"),
-		NULL, // object
-		NULL, // userInfo,
-		false);
-
-	%orig;
-}
-
--(void)_transitionFromFullscreenDidEnd {
-	%orig;
-
-	// Post notification of change
-	CFNotificationCenterPostNotification(
-		CFNotificationCenterGetDarwinNotifyCenter(),
-		CFSTR("com.ryst.portraitlock/fromfullscreenvideo"),
-		NULL, // object
-		NULL, // userInfo,
-		false);
-}
-%end
+%end // group HookSpringBoard8
+%end // hook SpringBoard
 
 %ctor {
-	// Load hooks for SpringBoard
-	if (%c(SpringBoard)) {
-		%init(SpringBoardHooks);
+	CFNotificationCenterAddObserver(
+		CFNotificationCenterGetDarwinNotifyCenter(),
+		NULL,
+		receivedNotification,
+		CFSTR("com.ryst.portraitlock/settingschanged"),
+		NULL,
+		CFNotificationSuspensionBehaviorCoalesce);
 
-		CFNotificationCenterAddObserver(
-			CFNotificationCenterGetDarwinNotifyCenter(),
-			NULL,
-			receivedNotification,
-			CFSTR("com.ryst.portraitlock/settingschanged"),
-			NULL,
-			CFNotificationSuspensionBehaviorCoalesce);
+	CFNotificationCenterAddObserver(
+		CFNotificationCenterGetDarwinNotifyCenter(),
+		NULL,
+		receivedNotification,
+		CFSTR("com.ryst.portraitlock/respring"),
+		NULL,
+		CFNotificationSuspensionBehaviorCoalesce);
 
-		CFNotificationCenterAddObserver(
-			CFNotificationCenterGetDarwinNotifyCenter(),
-			NULL,
-			receivedNotification,
-			CFSTR("com.ryst.portraitlock/tofullscreenvideo"),
-			NULL,
-			CFNotificationSuspensionBehaviorCoalesce);
+	appsToLock = [NSMutableDictionary dictionaryWithCapacity:10];
 
-		CFNotificationCenterAddObserver(
-			CFNotificationCenterGetDarwinNotifyCenter(),
-			NULL,
-			receivedNotification,
-			CFSTR("com.ryst.portraitlock/fromfullscreenvideo"),
-			NULL,
-			CFNotificationSuspensionBehaviorCoalesce);
+	loadPreferences();
 
-		appsToLock = [NSMutableDictionary dictionaryWithCapacity:10];
+	springboardLockActive = springboardLockSetting;
 
-		loadPreferences();
-
-		springboardLockActive = springboardLockSetting;
+	if (isiOS8) {
+		%init(HookSBApplication8);
+		%init(HookSpringBoard8);
+	} else {
+		%init(HookSBApplication7);
+		%init(HookSpringBoard7);
 	}
 
-	// Load hooks for other apps
 	%init;
 }
 
