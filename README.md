@@ -2,6 +2,8 @@ Portrait-Lock
 =============
 Turn on/off rotation lock automatically when specified apps are opened.
 
+*** No longer being developed. If anyone wants to continue support, they are more than welcome.
+
 Changelog
 =========
 v0.1.2-3
